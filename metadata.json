@@ -1,0 +1,6 @@
+{
+  "name": "MOIZ VISUAL LAB",
+  "description": "Turn your photos and ideas into beautiful visuals with simple AI-powered experiences.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
