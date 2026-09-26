@@ -195,7 +195,7 @@ export default function App() {
             'name': 'Is AI generation currently available?',
             'acceptedAnswer': {
               '@type': 'Answer',
-              'text': 'Our server includes a live integration pipeline configured for Google Gemini AI (gemini-3.1-flash-lite-image). In environments where quota or credentials are unavailable, an interactive prototype fallback ensures testing is uninterrupted.',
+              'text': 'Our server supports live integration for Google Gemini AI (gemini-3.1-flash-lite-image). In environments where an AI key or quota is not yet configured, the studio clearly indicates that AI generation is not connected and never displays simulated or fake generated images.',
             },
           },
           {

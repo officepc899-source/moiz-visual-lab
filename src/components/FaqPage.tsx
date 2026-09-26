@@ -78,17 +78,17 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate }) => {
       answer: (
         <div className="space-y-2">
           <p>
-            <strong>Live AI Connection vs Prototype Mode:</strong>
+            <strong>Live AI Connection Status:</strong>
           </p>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/90 text-xs text-slate-700 space-y-1.5 leading-relaxed">
             <p>
-              • <strong>AI Image & AI Photo:</strong> Our server includes a live integration pipeline configured for Google Gemini AI (<code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px] font-mono">gemini-3.1-flash-lite-image</code>). When upstream API keys or quotas are active, high-resolution generative outputs are synthesized in real-time.
+              • <strong>AI Image & AI Photo:</strong> Our server supports live integration for Google Gemini AI (<code className="bg-slate-200/70 px-1 py-0.5 rounded text-[11px] font-mono">gemini-3.1-flash-lite-image</code>). When an active API key with quota is configured, generative outputs are synthesized in real-time.
             </p>
             <p>
-              • <strong>Interactive Prototype Fallback:</strong> If upstream quota limits are reached or an environment is running in developer preview mode, the studio gracefully switches to authentic prototype preview mode. This ensures you can always preview styling, test prompts, and explore layouts without interrupted workflows.
+              • <strong>Transparent Status:</strong> If an AI provider key is not connected or quota is exceeded, the studio clearly displays "AI generation is not connected yet" rather than showing fake results or placeholders.
             </p>
             <p>
-              • <strong>AI Video:</strong> Video motion generation is currently in prototype mode while foundational motion models are being integrated.
+              • <strong>AI Video:</strong> Video motion generation is an experimental modality while video motion models are being integrated.
             </p>
           </div>
         </div>
@@ -99,7 +99,7 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate }) => {
       question: 'Can I download creations?',
       answer: (
         <p>
-          Yes, absolutely! Every creation produced in the studio includes a direct <strong>Download</strong> button. Generated images download directly to your device as high-quality image files without watermarks or forced signups.
+          Yes, absolutely! Every creation produced in the studio includes a direct <strong>Download</strong> button. Generated images download directly to your device as high-quality image files without watermarks or complex steps.
         </p>
       ),
     },

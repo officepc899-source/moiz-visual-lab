@@ -1,11 +1,13 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+// AI Studio development server must listen on port 3000
+const PORT = process.env.NODE_ENV === 'production' && process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Production security headers
 app.use((_req, res, next) => {
@@ -18,57 +20,6 @@ app.use((_req, res, next) => {
 // Body parsing with safe size limit for base64 uploads (max 30MB)
 app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
-
-// Lazy Gemini AI Client Initialization (avoids crashing if key is absent)
-let aiClient: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === '' || apiKey === 'MY_GEMINI_API_KEY') {
-    return null;
-  }
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey.trim(),
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-  }
-  return aiClient;
-}
-
-// Preset visual visuals for mock fallback when requested
-const MOCK_VISUALS: Record<string, string> = {
-  'ai-photo-Realistic': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Cinematic': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Anime': 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-3D': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Artistic': 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-
-  'ai-image-Realistic': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Cinematic': 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Anime': 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-3D': 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Artistic': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-
-  'ai-video-Realistic': 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Cinematic': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Anime': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-3D': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Artistic': 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-
-  'fun-Realistic': 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=1200&q=85',
-  'fun-Cinematic': 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5?auto=format&fit=crop&w=1200&q=85',
-  'fun-Anime': 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=1200&q=85',
-  'fun-3D': 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=1200&q=85',
-  'fun-Artistic': 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=85',
-  'fun-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-};
 
 // Helper: validate buffer magic bytes
 function validateImageMagicBytes(buffer: Buffer): { valid: boolean; detectedMime: string | null } {
@@ -101,6 +52,310 @@ function validateImageMagicBytes(buffer: Buffer): { valid: boolean; detectedMime
   }
 
   return { valid: false, detectedMime: null };
+}
+
+// -------------------------------------------------------------
+// AI Provider Abstraction Interface
+// -------------------------------------------------------------
+export interface GenerationRequest {
+  prompt: string;
+  mode: 'ai-image' | 'ai-photo' | 'ai-video' | 'fun';
+  style: string;
+  image?: {
+    data?: string;
+    mimeType?: string;
+    url?: string;
+  };
+}
+
+export interface GenerationResult {
+  imageUrl: string;
+  metadata: {
+    provider: string;
+    model: string;
+    mode: string;
+    style: string;
+    prompt: string;
+    timestamp: number;
+  };
+}
+
+export interface AIProvider {
+  readonly id: string;
+  readonly name: string;
+  isConfigured(): boolean;
+  checkHealth(): Promise<{ connected: boolean; message: string }>;
+  generate(req: GenerationRequest): Promise<GenerationResult>;
+}
+
+// -------------------------------------------------------------
+// Gemini Provider Implementation
+// -------------------------------------------------------------
+class GeminiAIProvider implements AIProvider {
+  readonly id = 'gemini';
+  readonly name = 'Google Gemini AI';
+  private client: GoogleGenAI | null = null;
+  private quotaChecked = false;
+  private quotaAvailable = false;
+  private quotaMessage = '';
+
+  isConfigured(): boolean {
+    const key = process.env.GEMINI_API_KEY;
+    return Boolean(key && key.trim() !== '' && key !== 'MY_GEMINI_API_KEY');
+  }
+
+  private getClient(): GoogleGenAI | null {
+    if (!this.isConfigured()) return null;
+    if (!this.client) {
+      this.client = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY!.trim(),
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+    }
+    return this.client;
+  }
+
+  async checkHealth(): Promise<{ connected: boolean; message: string }> {
+    if (this.quotaChecked) {
+      return { connected: this.quotaAvailable, message: this.quotaMessage };
+    }
+
+    const client = this.getClient();
+    if (!client) {
+      this.quotaChecked = true;
+      this.quotaAvailable = false;
+      this.quotaMessage = 'AI generation is not connected yet. Please configure an AI image provider.';
+      return { connected: false, message: this.quotaMessage };
+    }
+
+    try {
+      const res = await client.models.generateContent({
+        model: 'gemini-3.1-flash-lite-image',
+        contents: { parts: [{ text: 'probe' }] },
+        config: { imageConfig: { aspectRatio: '1:1' } },
+      });
+      const parts = res.candidates?.[0]?.content?.parts || [];
+      const hasImg = parts.some((p) => Boolean(p.inlineData?.data));
+      this.quotaChecked = true;
+      this.quotaAvailable = hasImg;
+      this.quotaMessage = hasImg
+        ? 'Live Gemini image generation connected and ready.'
+        : 'Model did not return image synthesis data.';
+      return { connected: this.quotaAvailable, message: this.quotaMessage };
+    } catch (err: unknown) {
+      this.quotaChecked = true;
+      this.quotaAvailable = false;
+      const raw = err instanceof Error ? err.message : String(err);
+      if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED') || raw.includes('quota')) {
+        this.quotaMessage = 'Free-tier Gemini key has zero quota for image models. A billing-enabled API key is required.';
+      } else {
+        this.quotaMessage = 'AI provider error during connection test.';
+      }
+      return { connected: false, message: this.quotaMessage };
+    }
+  }
+
+  async generate(req: GenerationRequest): Promise<GenerationResult> {
+    const client = this.getClient();
+    if (!client) {
+      const err = new Error('AI generation is not connected yet. Please configure an AI image provider.');
+      (err as any).code = 'AI_NOT_CONNECTED';
+      throw err;
+    }
+
+    if (req.mode === 'ai-video') {
+      const err = new Error('AI Video motion synthesis is not supported by the current image provider. A dedicated video provider is required.');
+      (err as any).code = 'NOT_SUPPORTED';
+      throw err;
+    }
+
+    const styleDescriptions: Record<string, string> = {
+      Realistic: 'photorealistic, ultra detailed, natural lighting, 8k resolution, authentic textures',
+      Cinematic: 'cinematic lighting, dramatic atmosphere, anamorphic lens, film still aesthetic, 35mm photography',
+      Anime: 'high quality modern anime aesthetic, vibrant expressive colors, detailed cel shading, Makoto Shinkai style',
+      '3D': 'modern 3D digital render, Pixar / Octane render aesthetic, smooth materials, volumetric lighting',
+      Artistic: 'fine art painting style, expressive brushstrokes, rich canvas texture, creative color palette',
+      Fantasy: 'ethereal fantasy style, magical glowing accents, enchanted mystical environment, mythical wonder',
+    };
+    const styleEnrichment = styleDescriptions[req.style] || styleDescriptions.Realistic;
+
+    let imageBuffer: Buffer | null = null;
+    let detectedMime = 'image/jpeg';
+
+    if (req.image && (req.image.data || req.image.url)) {
+      let base64Data = req.image.data || '';
+      if (!base64Data && req.image.url) {
+        const fetchRes = await fetch(req.image.url);
+        if (!fetchRes.ok) {
+          const err = new Error('Failed to retrieve selected image from source URL.');
+          (err as any).code = 'INVALID_INPUT';
+          throw err;
+        }
+        const ab = await fetchRes.arrayBuffer();
+        base64Data = Buffer.from(ab).toString('base64');
+      }
+
+      if (base64Data.startsWith('data:')) {
+        const commaIdx = base64Data.indexOf(',');
+        if (commaIdx !== -1) {
+          base64Data = base64Data.substring(commaIdx + 1);
+        }
+      }
+
+      try {
+        imageBuffer = Buffer.from(base64Data, 'base64');
+      } catch {
+        const err = new Error('Invalid image data payload. Could not decode base64.');
+        (err as any).code = 'INVALID_INPUT';
+        throw err;
+      }
+
+      if (imageBuffer.length > 25 * 1024 * 1024) {
+        const err = new Error('Uploaded image file exceeds the 25MB maximum size limit.');
+        (err as any).code = 'INVALID_INPUT';
+        throw err;
+      }
+
+      const check = validateImageMagicBytes(imageBuffer);
+      if (!check.valid || !check.detectedMime) {
+        const err = new Error('Unsupported image file type. Please upload a valid JPG, PNG, or WEBP image file.');
+        (err as any).code = 'INVALID_INPUT';
+        throw err;
+      }
+      detectedMime = check.detectedMime;
+    }
+
+    if (req.mode === 'ai-photo' && !imageBuffer) {
+      const err = new Error('An uploaded photo is required for AI Photo transformation.');
+      (err as any).code = 'INVALID_INPUT';
+      throw err;
+    }
+
+    const userPrompt = req.prompt.trim();
+    let fullPrompt = '';
+    if (req.mode === 'ai-photo') {
+      const instruction = userPrompt || 'Transform this photo';
+      fullPrompt = `${instruction}. Apply a ${req.style} aesthetic (${styleEnrichment}). Preserve the essential character and composition of the subject while rendering it in high-resolution visual quality.`;
+    } else if (req.mode === 'fun') {
+      const instruction = userPrompt || 'Create a playful, stylized character avatar';
+      fullPrompt = `${instruction}. Style: ${req.style} creative rendering, ${styleEnrichment}. Vibrant, high quality, expressive character design.`;
+    } else {
+      fullPrompt = `${userPrompt}. Style: ${req.style} aesthetic, ${styleEnrichment}. High quality, visually stunning, clean composition.`;
+    }
+
+    const parts: any[] = [];
+    if (imageBuffer) {
+      parts.push({
+        inlineData: {
+          data: imageBuffer.toString('base64'),
+          mimeType: detectedMime,
+        },
+      });
+    }
+    parts.push({ text: fullPrompt });
+
+    try {
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-flash-lite-image',
+        contents: { parts },
+        config: {
+          imageConfig: {
+            aspectRatio: '1:1',
+          },
+        },
+      });
+
+      const candParts = response.candidates?.[0]?.content?.parts || [];
+      for (const part of candParts) {
+        if (part.inlineData && part.inlineData.data) {
+          const mime = part.inlineData.mimeType || 'image/png';
+          const imageUrl = `data:${mime};base64,${part.inlineData.data}`;
+          return {
+            imageUrl,
+            metadata: {
+              provider: 'gemini',
+              model: 'gemini-3.1-flash-lite-image',
+              mode: req.mode,
+              style: req.style,
+              prompt: userPrompt,
+              timestamp: Date.now(),
+            },
+          };
+        }
+      }
+
+      const textPart = candParts.find((p) => Boolean(p.text));
+      const err = new Error(textPart?.text || 'The AI model could not generate an image for this prompt. Please try adjusting your prompt.');
+      (err as any).code = 'GENERATION_FAILED';
+      throw err;
+    } catch (apiErr: unknown) {
+      const raw = apiErr instanceof Error ? apiErr.message : String(apiErr);
+      const sanitized = raw.replace(/key=[a-zA-Z0-9_\-]+/gi, 'key=***');
+
+      if (sanitized.includes('429') || sanitized.includes('RESOURCE_EXHAUSTED') || sanitized.includes('quota')) {
+        const err = new Error('AI generation quota exceeded. A billing-enabled Gemini API key is required for image generation.');
+        (err as any).code = 'QUOTA_EXCEEDED';
+        throw err;
+      }
+
+      if (sanitized.includes('SAFETY') || sanitized.includes('blocked')) {
+        const err = new Error('The prompt or image could not be processed due to safety policies. Please adjust your input.');
+        (err as any).code = 'SAFETY_BLOCKED';
+        throw err;
+      }
+
+      if ((apiErr as any)?.code) {
+        throw apiErr;
+      }
+
+      const err = new Error(sanitized || 'An unexpected error occurred during image generation.');
+      (err as any).code = 'API_ERROR';
+      throw err;
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// Unconfigured Fallback Provider
+// -------------------------------------------------------------
+class UnconfiguredProvider implements AIProvider {
+  readonly id: string;
+  readonly name: string;
+
+  constructor(id: string) {
+    this.id = id;
+    this.name = id ? id.toUpperCase() : 'None';
+  }
+
+  isConfigured(): boolean {
+    return false;
+  }
+
+  async checkHealth(): Promise<{ connected: boolean; message: string }> {
+    return {
+      connected: false,
+      message: 'AI generation is not connected yet. Please configure an AI image provider.',
+    };
+  }
+
+  async generate(): Promise<GenerationResult> {
+    const err = new Error('AI generation is not connected yet. Please configure an AI image provider.');
+    (err as any).code = 'AI_NOT_CONNECTED';
+    throw err;
+  }
+}
+
+// Provider Factory based on AI_PROVIDER environment variable
+function getActiveProvider(): AIProvider {
+  const providerType = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
+  if (providerType === 'gemini') {
+    return new GeminiAIProvider();
+  }
+  return new UnconfiguredProvider(providerType);
 }
 
 // -------------------------------------------------------------
@@ -189,26 +444,33 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Provider Config status (Never sends the actual key)
-app.get('/api/config', (_req, res) => {
-  const hasKey = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY';
+app.get('/api/config', async (_req, res) => {
+  const provider = getActiveProvider();
+  const configured = provider.isConfigured();
+  if (!configured) {
+    return res.json({
+      hasApiKey: false,
+      provider: provider.name,
+      aiConnected: false,
+      statusMessage: 'AI generation is not connected yet. Please configure an AI image provider.',
+      model: 'none',
+    });
+  }
+
+  const { connected, message } = await provider.checkHealth();
   res.json({
-    hasApiKey: hasKey,
-    provider: 'Google Gemini AI',
+    hasApiKey: configured,
+    provider: provider.name,
+    aiConnected: connected,
+    statusMessage: message,
     model: 'gemini-3.1-flash-lite-image',
-    modes: {
-      'ai-image': { live: hasKey, description: 'Text to image generation' },
-      'ai-photo': { live: hasKey, description: 'Photo transformation & editing' },
-      'ai-video': { live: false, description: 'Prototype mode' },
-      'fun': { live: false, description: 'Prototype mode' },
-    },
-    mockModeAvailable: true,
   });
 });
 
 // Generation Endpoint
 app.post('/api/generate', async (req, res) => {
   try {
-    const { mode, prompt, style = 'Realistic', image, allowMockFallback = false } = req.body;
+    const { mode, prompt, style = 'Realistic', image } = req.body;
 
     // Validate mode
     const allowedModes = ['ai-image', 'ai-photo', 'ai-video', 'fun'];
@@ -219,48 +481,21 @@ app.post('/api/generate', async (req, res) => {
       });
     }
 
-    // AI Video and Fun are in prototype mode for now
-    if (mode === 'ai-video' || mode === 'fun') {
-      const fallbackUrl = MOCK_VISUALS[`${mode}-${style}`] || MOCK_VISUALS['ai-image-Realistic'];
-      return res.json({
-        success: true,
-        isMock: true,
-        imageUrl: fallbackUrl,
-        mode,
-        style,
-        message: `${mode === 'ai-video' ? 'AI Video' : 'Fun'} is currently in prototype mode.`,
-      });
-    }
-
-    // Check Gemini API Key
-    const ai = getGenAI();
-    if (!ai) {
-      if (allowMockFallback) {
-        const fallbackUrl = MOCK_VISUALS[`${mode}-${style}`] || MOCK_VISUALS['ai-image-Realistic'];
-        return res.json({
-          success: true,
-          isMock: true,
-          imageUrl: fallbackUrl,
-          mode,
-          style,
-          message: 'Real AI generation is not configured. GEMINI_API_KEY is missing. Using prototype preview.',
-        });
-      }
-
+    const provider = getActiveProvider();
+    if (!provider.isConfigured()) {
       return res.status(503).json({
         success: false,
-        code: 'NO_API_KEY',
-        error: 'Gemini API key is not configured on the server. Please set GEMINI_API_KEY in the environment secrets to enable real generation.',
-        canMock: true,
+        code: 'AI_NOT_CONNECTED',
+        error: 'AI generation is not connected yet. Please configure an AI image provider.',
       });
     }
 
     // Input Validation
     const cleanPrompt = typeof prompt === 'string' ? prompt.trim() : '';
-    if (mode === 'ai-image' && !cleanPrompt) {
+    if ((mode === 'ai-image' || !image) && !cleanPrompt) {
       return res.status(400).json({
         success: false,
-        error: 'Please provide a text prompt describing the image you want to generate.',
+        error: 'Please provide a text prompt describing what you want to create.',
       });
     }
 
@@ -271,225 +506,59 @@ app.post('/api/generate', async (req, res) => {
       });
     }
 
-    // Style prompt enhancer
-    const styleDescriptions: Record<string, string> = {
-      Realistic: 'photorealistic, ultra detailed, natural lighting, 8k resolution, authentic textures',
-      Cinematic: 'cinematic lighting, dramatic atmosphere, anamorphic lens, film still aesthetic, 35mm photography',
-      Anime: 'high quality modern anime aesthetic, vibrant expressive colors, detailed cel shading, Makoto Shinkai style',
-      '3D': 'modern 3D digital render, Pixar / Octane render aesthetic, smooth materials, volumetric lighting',
-      Artistic: 'fine art painting style, expressive brushstrokes, rich canvas texture, creative color palette',
-      Fantasy: 'ethereal fantasy style, magical glowing accents, enchanted mystical environment, mythical wonder',
-    };
-    const styleEnrichment = styleDescriptions[style] || styleDescriptions.Realistic;
+    const result = await provider.generate({
+      mode,
+      prompt: cleanPrompt,
+      style,
+      image,
+    });
 
-    // ---------------------------------------------------------
-    // 1. AI Image: Text to Image
-    // ---------------------------------------------------------
-    if (mode === 'ai-image') {
-      const fullPrompt = `${cleanPrompt}. Style: ${style} aesthetic, ${styleEnrichment}. High quality, visually stunning, clean composition.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-image',
-        contents: {
-          parts: [{ text: fullPrompt }],
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: '1:1',
-          },
-        },
-      });
-
-      const parts = response.candidates?.[0]?.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData && part.inlineData.data) {
-          const mime = part.inlineData.mimeType || 'image/png';
-          const imageUrl = `data:${mime};base64,${part.inlineData.data}`;
-          return res.json({
-            success: true,
-            isMock: false,
-            imageUrl,
-            mode,
-            style,
-          });
-        }
-      }
-
-      // Check if text was returned explaining rejection
-      const textPart = parts.find((p) => !!p.text);
-      return res.status(502).json({
-        success: false,
-        code: 'GENERATION_FAILED',
-        error: textPart?.text || 'The AI model could not generate an image for this prompt. Please try adjusting your prompt.',
-      });
-    }
-
-    // ---------------------------------------------------------
-    // 2. AI Photo: Image to Image / Photo transformation
-    // ---------------------------------------------------------
-    if (mode === 'ai-photo') {
-      if (!image || (!image.data && !image.url)) {
-        return res.status(400).json({
-          success: false,
-          error: 'An uploaded photo is required for AI Photo transformation.',
-        });
-      }
-
-      // Server-side image validation
-      let base64Data = image.data || '';
-      let claimedMime = image.mimeType || 'image/jpeg';
-
-      if (!base64Data && image.url) {
-        try {
-          const fetchRes = await fetch(image.url);
-          if (!fetchRes.ok) {
-            return res.status(400).json({
-              success: false,
-              error: 'Failed to retrieve selected image from source URL.',
-            });
-          }
-          const arrayBuffer = await fetchRes.arrayBuffer();
-          const fetchedBuffer = Buffer.from(arrayBuffer);
-          base64Data = fetchedBuffer.toString('base64');
-          claimedMime = fetchRes.headers.get('content-type') || 'image/jpeg';
-        } catch {
-          return res.status(400).json({
-            success: false,
-            error: 'Could not fetch sample image for transformation.',
-          });
-        }
-      }
-
-      // Strip data URI prefix if present
-      if (base64Data.startsWith('data:')) {
-        const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
-        if (matches) {
-          claimedMime = matches[1];
-          base64Data = matches[2];
-        } else {
-          const commaIdx = base64Data.indexOf(',');
-          if (commaIdx !== -1) {
-            base64Data = base64Data.substring(commaIdx + 1);
-          }
-        }
-      }
-
-      // Decode buffer for server-side verification
-      let buffer: Buffer;
-      try {
-        buffer = Buffer.from(base64Data, 'base64');
-      } catch {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid image data payload. Could not decode base64.',
-        });
-      }
-
-      // Validate size (max 25MB)
-      if (buffer.length > 25 * 1024 * 1024) {
-        return res.status(400).json({
-          success: false,
-          error: 'Uploaded image file exceeds the 25MB maximum size limit.',
-        });
-      }
-
-      // Validate magic bytes
-      const { valid, detectedMime } = validateImageMagicBytes(buffer);
-      if (!valid || !detectedMime) {
-        return res.status(400).json({
-          success: false,
-          error: 'Unsupported image file type. Please upload a valid JPG, PNG, or WEBP image file.',
-        });
-      }
-
-      // Build photo transformation prompt
-      const userInstruction = cleanPrompt || 'Transform this photo';
-      const fullPrompt = `${userInstruction}. Apply a ${style} aesthetic (${styleEnrichment}). Preserve the essential character and composition of the subject while rendering it in high-resolution visual quality.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-image',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: detectedMime,
-              },
-            },
-            {
-              text: fullPrompt,
-            },
-          ],
-        },
-      });
-
-      const parts = response.candidates?.[0]?.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData && part.inlineData.data) {
-          const mime = part.inlineData.mimeType || 'image/png';
-          const imageUrl = `data:${mime};base64,${part.inlineData.data}`;
-          return res.json({
-            success: true,
-            isMock: false,
-            imageUrl,
-            mode,
-            style,
-          });
-        }
-      }
-
-      const textPart = parts.find((p) => !!p.text);
-      return res.status(502).json({
-        success: false,
-        code: 'TRANSFORMATION_FAILED',
-        error: textPart?.text || 'The AI model could not transform this image. Please try a different photo or prompt.',
-      });
-    }
-
-    return res.status(400).json({ success: false, error: 'Unhandled mode.' });
+    return res.json({
+      success: true,
+      imageUrl: result.imageUrl,
+      metadata: result.metadata,
+    });
   } catch (err: unknown) {
-    // If user explicitly requested mock fallback preview after error
-    if (req.body?.allowMockFallback) {
-      const fallbackUrl = MOCK_VISUALS[`${req.body.mode}-${req.body.style}`] || MOCK_VISUALS['ai-image-Realistic'];
-      return res.json({
-        success: true,
-        isMock: true,
-        imageUrl: fallbackUrl,
-        mode: req.body.mode,
-        style: req.body.style,
-        message: 'Previewing in prototype mode.',
+    const errorObj = err as { code?: string; message?: string };
+    const code = errorObj.code || 'API_ERROR';
+    const message = errorObj.message || 'Generation failed.';
+
+    if (code === 'AI_NOT_CONNECTED') {
+      return res.status(503).json({
+        success: false,
+        code: 'AI_NOT_CONNECTED',
+        error: 'AI generation is not connected yet. Please configure an AI image provider.',
       });
     }
 
-    // Sanitize error: never leak API keys or secrets
-    const rawError = err instanceof Error ? err.message : String(err);
-    const sanitizedError = rawError.replace(/key=[a-zA-Z0-9_\-]+/gi, 'key=***');
-
-    // Detect rate limit / quota
-    if (sanitizedError.includes('429') || sanitizedError.includes('RESOURCE_EXHAUSTED') || sanitizedError.includes('quota')) {
+    if (code === 'QUOTA_EXCEEDED') {
       return res.status(429).json({
         success: false,
         code: 'QUOTA_EXCEEDED',
         error: 'AI generation quota exceeded. A billing-enabled Gemini API key is required for image generation.',
-        canMock: true,
       });
     }
 
-    // Detect safety block
-    if (sanitizedError.includes('SAFETY') || sanitizedError.includes('blocked')) {
+    if (code === 'NOT_SUPPORTED') {
+      return res.status(501).json({
+        success: false,
+        code: 'NOT_SUPPORTED',
+        error: message,
+      });
+    }
+
+    if (code === 'INVALID_INPUT' || code === 'SAFETY_BLOCKED') {
       return res.status(400).json({
         success: false,
-        code: 'SAFETY_BLOCKED',
-        error: 'The prompt or image could not be processed due to safety policies. Please adjust your input.',
-        canMock: true,
+        code,
+        error: message,
       });
     }
 
     return res.status(500).json({
       success: false,
       code: 'API_ERROR',
-      error: sanitizedError || 'An unexpected error occurred during image generation.',
-      canMock: true,
+      error: message,
     });
   }
 });
@@ -510,10 +579,29 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
+
+    // Serve transformed index.html for all non-API GET requests in dev mode
+    app.use('*', async (req, res, next) => {
+      if (req.originalUrl.startsWith('/api')) {
+        return next();
+      }
+      try {
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        let template = fs.readFileSync(indexPath, 'utf-8');
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath, { maxAge: '1d', etag: true }));

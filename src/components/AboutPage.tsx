@@ -69,7 +69,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
           <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
             <h4 className="font-bold text-slate-900 text-sm mb-1">Transparent Experience</h4>
             <p className="text-xs text-slate-500 leading-normal">
-              Clear distinction between live AI processing pipelines and interactive prototypes.
+              Clear honest status on AI connection — we never display fake or simulated generated images.
             </p>
           </div>
         </div>
@@ -128,10 +128,10 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
               AI Video & Motion
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Experience dynamic visual motion concepts, ambient video loops, and camera pan simulations. Currently featured in prototype preview mode to showcase the future of browser-based creative motion synthesis.
+              Experience dynamic visual motion concepts, ambient video loops, and camera pan simulations for the future of browser-based creative motion synthesis.
             </p>
             <div className="text-xs font-semibold text-indigo-600 pt-1">
-              Status: Interactive Prototype Mode
+              Status: Experimental Modality
             </div>
           </div>
 
@@ -160,7 +160,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
           <span>Commitment to Authentic Creativity</span>
         </h3>
         <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          MOIZ VISUAL LAB is built with transparency and respect for creators. We clearly distinguish live AI model features from prototype previews, never use misleading claims, and provide instant downloads of all generated assets without locking your work behind restrictive walls.
+          MOIZ VISUAL LAB is built with transparency and respect for creators. We clearly indicate connection status, never display fake generated results, and provide instant downloads of all generated assets.
         </p>
       </section>
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Sparkles, Download, RefreshCw, Palette, Image as ImageIcon, 
-  ExternalLink, SlidersHorizontal, Check, Eye, AlertCircle, XCircle
+  SlidersHorizontal, Check, AlertCircle, XCircle
 } from 'lucide-react';
 import { StudioCreationResult, CreationStyle } from './types';
 
@@ -12,7 +12,6 @@ interface ResultPreviewProps {
   errorCode?: string | null;
   onRetry?: () => void;
   onDismissError?: () => void;
-  onFallbackToMock?: () => void;
   onCancelGenerating?: () => void;
   onCreateAgain: () => void;
   onTryAnotherStyle: () => void;
@@ -26,7 +25,6 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
   errorCode,
   onRetry,
   onDismissError,
-  onFallbackToMock,
   onCancelGenerating,
   onCreateAgain,
   onTryAnotherStyle,
@@ -57,7 +55,6 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
         link.click();
         document.body.removeChild(link);
       } else {
-        // Try fetching as blob to force real file download
         const response = await fetch(result.imageUrl, { mode: 'cors' });
         if (response.ok) {
           const blob = await response.blob();
@@ -70,7 +67,6 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
           document.body.removeChild(link);
           setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
         } else {
-          // Fallback direct link
           const link = document.createElement('a');
           link.href = result.imageUrl;
           link.download = filename;
@@ -84,7 +80,6 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 2500);
     } catch {
-      // Fallback
       const link = document.createElement('a');
       link.href = result.imageUrl;
       link.download = filename;
@@ -107,16 +102,10 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
           5. Visual Result
         </label>
         {result && (
-          result.isMock ? (
-            <span className="text-[11px] text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full font-semibold border border-amber-200">
-              Prototype Preview
-            </span>
-          ) : (
-            <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              AI Generated Ready
-            </span>
-          )
+          <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            AI Generated Result
+          </span>
         )}
       </div>
 
@@ -135,10 +124,10 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-900">
-                Creating your visual…
+                Generating your visual…
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-sm">
-                Processing through Google Gemini AI image pipeline.
+                Processing prompt with connected AI visual generation model.
               </p>
             </div>
             {onCancelGenerating && (
@@ -153,22 +142,26 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
             )}
           </div>
         ) : error ? (
-          /* State B: Error State */
-          <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-4 min-h-[360px] bg-rose-50/30">
-            <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-sm">
+          /* State B: Error / Not Connected State */
+          <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-4 min-h-[360px] bg-amber-50/40">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shadow-sm">
               <AlertCircle className="w-7 h-7" />
             </div>
 
             <div className="max-w-md">
               <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                {errorCode === 'QUOTA_EXCEEDED' 
-                  ? 'AI Generation Limit Reached' 
-                  : errorCode === 'NO_API_KEY'
-                  ? 'API Key Not Configured'
+                {errorCode === 'AI_NOT_CONNECTED' || errorCode === 'NO_API_KEY'
+                  ? 'AI generation is not connected yet'
+                  : errorCode === 'QUOTA_EXCEEDED'
+                  ? 'AI Generation Limit Reached'
                   : 'Generation Could Not Complete'}
               </h3>
               <p className="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed break-words">
-                {error}
+                {errorCode === 'AI_NOT_CONNECTED' || errorCode === 'NO_API_KEY'
+                  ? 'AI generation is not connected yet. Please configure an AI image provider.'
+                  : errorCode === 'QUOTA_EXCEEDED'
+                  ? 'AI generation quota exceeded. A billing-enabled Gemini API key is required for image generation.'
+                  : error}
               </p>
             </div>
 
@@ -184,17 +177,6 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
                 </button>
               )}
 
-              {onFallbackToMock && (
-                <button
-                  type="button"
-                  onClick={onFallbackToMock}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors shadow-xs cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Preview in Prototype Mode</span>
-                </button>
-              )}
-
               {onDismissError && (
                 <button
                   type="button"
@@ -207,14 +189,14 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
             </div>
           </div>
         ) : result ? (
-          /* State B: Generated Result */
+          /* State C: Generated Result */
           <div className="flex flex-col flex-1">
             {/* Visual Viewport */}
             <div className="relative aspect-[4/3] sm:aspect-[16/10] w-full overflow-hidden bg-slate-950">
               {imageLoadError ? (
                 <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-300">
                   <ImageIcon className="w-12 h-12 text-slate-500 mb-2" />
-                  <p className="text-sm font-semibold text-white">Visual Preview</p>
+                  <p className="text-sm font-semibold text-white">Generated Visual</p>
                   <p className="text-xs text-slate-400 mt-1 max-w-xs">{result.prompt}</p>
                 </div>
               ) : (
@@ -239,11 +221,6 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
                   <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-600/90 text-white shadow-xs">
                     {result.mode.replace('-', ' ').toUpperCase()}
                   </span>
-                  {result.isMock && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/90 text-white shadow-xs">
-                      PROTOTYPE
-                    </span>
-                  )}
                 </div>
 
                 {result.originalImage && (
@@ -317,7 +294,7 @@ export const ResultPreview: React.FC<ResultPreviewProps> = ({
             </div>
           </div>
         ) : (
-          /* State C: Empty Placeholder */
+          /* State D: Empty Placeholder */
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4 min-h-[360px] bg-slate-50/50">
             {/* Subtle Placeholder Illustration */}
             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-indigo-50/70 border border-indigo-100 flex items-center justify-center text-indigo-400">

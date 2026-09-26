@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadCloud, Sparkles, Image as ImageIcon, X, ArrowRight, CheckCircle2, RefreshCw, Wand2 } from 'lucide-react';
+import { UploadCloud, Sparkles, Image as ImageIcon, X, ArrowRight, CheckCircle2, RefreshCw, Wand2, AlertCircle } from 'lucide-react';
 
 interface QuickCreateProps {
   initialPrompt?: string;
@@ -10,27 +10,29 @@ export const QuickCreate: React.FC<QuickCreateProps> = ({ initialPrompt = '', on
   const [prompt, setPrompt] = useState(initialPrompt);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [simulationResult, setSimulationResult] = useState<{
-    image: string;
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationResult, setGenerationResult] = useState<{
+    imageUrl: string;
     prompt: string;
   } | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const setCleanUploadedImage = (url: string | null) => {
     if (uploadedImage && uploadedImage.startsWith('blob:')) {
       URL.revokeObjectURL(uploadedImage);
     }
     setUploadedImage(url);
-    setSimulationResult(null);
+    setGenerationResult(null);
+    setGenerationError(null);
   };
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
       if (uploadedImage && uploadedImage.startsWith('blob:')) {
         URL.revokeObjectURL(uploadedImage);
@@ -76,28 +78,63 @@ export const QuickCreate: React.FC<QuickCreateProps> = ({ initialPrompt = '', on
     setCleanUploadedImage(url);
   };
 
-  const handleGenerate = (e: React.FormEvent) => {
+  const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const effectivePrompt = prompt.trim() || 'High-contrast editorial portrait with studio key lighting';
+    const effectivePrompt = prompt.trim() || 'Studio portrait with soft cinematic lighting and warm rim light';
     if (!prompt.trim() && !uploadedImage) {
       setPrompt(effectivePrompt);
     }
 
-    setIsSimulating(true);
-    setSimulationResult(null);
+    setIsGenerating(true);
+    setGenerationResult(null);
+    setGenerationError(null);
 
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    // Front-end prototype simulation
-    timeoutRef.current = setTimeout(() => {
-      setIsSimulating(false);
-      setSimulationResult({
-        image: uploadedImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1000&q=85',
-        prompt: effectivePrompt,
+    try {
+      let imagePayload: { url?: string } | undefined = undefined;
+      if (uploadedImage && !uploadedImage.startsWith('blob:')) {
+        imagePayload = { url: uploadedImage };
+      }
+
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: uploadedImage ? 'ai-photo' : 'ai-image',
+          prompt: effectivePrompt,
+          style: 'Cinematic',
+          image: imagePayload,
+        }),
+        signal: controller.signal,
       });
-    }, 1100);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        const message = errorData?.error || 'AI generation is not connected yet. Please configure an AI image provider.';
+        setGenerationError(message);
+        setIsGenerating(false);
+        return;
+      }
+
+      const data = await response.json();
+      if (data && data.success && data.imageUrl && data.imageUrl !== uploadedImage) {
+        setGenerationResult({
+          imageUrl: data.imageUrl,
+          prompt: effectivePrompt,
+        });
+      } else {
+        setGenerationError(data?.error || 'AI generation is not connected yet. Please configure an AI image provider.');
+      }
+    } catch {
+      setGenerationError('AI generation is not connected yet. Please configure an AI image provider.');
+    } finally {
+      setIsGenerating(false);
+      abortControllerRef.current = null;
+    }
   };
 
   return (
@@ -253,19 +290,19 @@ export const QuickCreate: React.FC<QuickCreateProps> = ({ initialPrompt = '', on
             {/* Action Bar */}
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-xs text-slate-600 text-left">
-                ✦ Front-end interactive preview. Zero credit card or signup required.
+                ✦ Enter your prompt or choose an idea to generate your visual.
               </p>
 
               <button
                 id="quick-create-generate-btn"
                 type="submit"
-                disabled={isSimulating}
+                disabled={isGenerating}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white font-semibold text-sm px-7 py-3 rounded-xl shadow-md shadow-indigo-100 transition-all duration-200 cursor-pointer disabled:opacity-60"
               >
-                {isSimulating ? (
+                {isGenerating ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Preparing Preview…</span>
+                    <span>Generating...</span>
                   </>
                 ) : (
                   <>
@@ -277,28 +314,65 @@ export const QuickCreate: React.FC<QuickCreateProps> = ({ initialPrompt = '', on
             </div>
           </form>
 
-          {/* Prototype Front-End Experience Result Display */}
-          {simulationResult && (
+          {/* Genuine Result or Honest Status */}
+          {generationError && (
+            <div
+              id="quick-create-error-box"
+              role="alert"
+              className="mt-8 p-5 rounded-2xl bg-amber-50/80 border border-amber-200 text-left space-y-2 animate-in fade-in duration-200"
+            >
+              <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <span>AI generation is not connected yet</span>
+              </div>
+              <p className="text-xs text-amber-900/80 leading-relaxed">
+                {generationError.includes('AI generation is not connected yet')
+                  ? 'AI generation is not connected yet. Please configure an AI image provider.'
+                  : generationError}
+              </p>
+              <div className="pt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setGenerationError(null)}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+                {onNavigateToStudio && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToStudio}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-xs cursor-pointer ml-auto"
+                  >
+                    <span>Open Create Studio</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {generationResult && (
             <div
               id="quick-create-result-box"
               role="region"
               aria-live="polite"
               className="mt-8 pt-6 border-t border-slate-100 animate-in fade-in slide-in-from-bottom-2 duration-300"
             >
-              <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100 flex items-start gap-3 mb-5">
-                <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-indigo-950 leading-relaxed">
-                  <span className="font-bold">Front-end Experience Preview:</span> Rendering pipeline initialized for prompt: <span className="italic font-medium">"{simulationResult.prompt}"</span>. In the next release phase, this triggers the direct neural synthesis backend.
+              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100 flex items-start gap-3 mb-5">
+                <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-emerald-950 leading-relaxed">
+                  <span className="font-bold">AI Generated Visual:</span> Generated for prompt: <span className="italic font-medium">"{generationResult.prompt}"</span>.
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                 <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-slate-600">Generated Visual Preview</span>
+                  <span className="text-xs font-semibold text-slate-600">Generated Result</span>
                   <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-slate-900 shadow-md">
                     <img
-                      src={simulationResult.image}
-                      alt="Transformed result"
+                      src={generationResult.imageUrl}
+                      alt={generationResult.prompt}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                     />
@@ -307,22 +381,19 @@ export const QuickCreate: React.FC<QuickCreateProps> = ({ initialPrompt = '', on
 
                 <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col justify-between h-full">
                   <div>
-                    <h4 className="text-sm font-bold text-slate-900">Transformation Details</h4>
+                    <h4 className="text-sm font-bold text-slate-900">Creation Details</h4>
                     <p className="text-xs text-slate-500 mt-1">
-                      Resolution: 2048 x 2048 HD • Mode: Studio Retouch & Style Filter
+                      Visual successfully generated by AI matching your prompt.
                     </p>
-                    <div className="mt-3 text-xs text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200/80">
-                      <span className="font-semibold text-indigo-600">Applied parameters:</span> Contrast enhancement, soft focal blur, and color grading harmony.
-                    </div>
                   </div>
 
                   <div className="pt-2 flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setSimulationResult(null)}
+                      onClick={() => setGenerationResult(null)}
                       className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-200/50 cursor-pointer"
                     >
-                      Clear Preview
+                      Clear
                     </button>
                     {onNavigateToStudio && (
                       <button

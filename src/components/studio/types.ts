@@ -17,15 +17,12 @@ export interface StudioCreationResult {
   originalImage?: string | null;
   createdAt: number;
   isVideo?: boolean;
-  isMock?: boolean;
 }
 
 export interface ProviderConfig {
   hasApiKey: boolean;
   provider: string;
-  model: string;
-  modes: Record<CreationMode, { live: boolean; description: string }>;
-  mockModeAvailable: boolean;
+  aiConnected: boolean;
 }
 
 export interface SampleImage {

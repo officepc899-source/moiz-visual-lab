@@ -1,9 +1,10 @@
 import React from 'react';
-import { Sparkles, RefreshCw, XCircle } from 'lucide-react';
+import { Sparkles, RefreshCw, XCircle, AlertCircle } from 'lucide-react';
 
 interface GenerateButtonProps {
   canGenerate: boolean;
   isGenerating: boolean;
+  aiConnected?: boolean;
   onGenerate: () => void;
   onCancel?: () => void;
   disabledReason?: string;
@@ -13,6 +14,7 @@ interface GenerateButtonProps {
 export const GenerateButton: React.FC<GenerateButtonProps> = ({
   canGenerate,
   isGenerating,
+  aiConnected = true,
   onGenerate,
   onCancel,
   disabledReason,
@@ -29,18 +31,25 @@ export const GenerateButton: React.FC<GenerateButtonProps> = ({
           className={`w-full sm:w-auto inline-flex items-center justify-center gap-2.5 font-bold text-base px-8 py-3.5 rounded-2xl shadow-md transition-all duration-200 cursor-pointer ${
             !canGenerate || isGenerating
               ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none border border-slate-300/60'
+              : !aiConnected
+              ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-200/60 hover:shadow-lg active:scale-[0.99]'
               : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white shadow-indigo-200/60 hover:shadow-lg hover:shadow-indigo-300/60 active:scale-[0.99]'
           }`}
         >
           {isGenerating ? (
             <>
               <RefreshCw className="w-5 h-5 animate-spin text-white" />
-              <span>Creating your visual…</span>
+              <span>Generating...</span>
+            </>
+          ) : !aiConnected ? (
+            <>
+              <AlertCircle className="w-5 h-5 text-amber-200" />
+              <span>AI generation is not connected yet</span>
             </>
           ) : (
             <>
               <span>Generate</span>
-              <span className="text-amber-200">✨</span>
+              <Sparkles className="w-4 h-4 text-amber-200" />
             </>
           )}
         </button>

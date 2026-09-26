@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Layers, ArrowLeft } from 'lucide-react';
+import { Layers, ArrowLeft } from 'lucide-react';
 import { CreationMode, CreationStyle, StudioCreationResult, ProviderConfig } from './types';
 import { CreationModeSelector } from './CreationModeSelector';
 import { UploadDropzone } from './UploadDropzone';
@@ -36,45 +36,10 @@ async function urlToBase64(url: string): Promise<{ data: string; mimeType: strin
   });
 }
 
-// Preset visual results tailored by mode & style for authentic front-end preview
-const PREVIEW_VISUALS: Record<string, string> = {
-  // AI Photo
-  'ai-photo-Realistic': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Cinematic': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Anime': 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-3D': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Artistic': 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=85',
-  'ai-photo-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-
-  // AI Image
-  'ai-image-Realistic': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Cinematic': 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Anime': 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-3D': 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Artistic': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=85',
-  'ai-image-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-
-  // AI Video
-  'ai-video-Realistic': 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Cinematic': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Anime': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-3D': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Artistic': 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1200&q=85',
-  'ai-video-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-
-  // Fun
-  'fun-Realistic': 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=1200&q=85',
-  'fun-Cinematic': 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5?auto=format&fit=crop&w=1200&q=85',
-  'fun-Anime': 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=1200&q=85',
-  'fun-3D': 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=1200&q=85',
-  'fun-Artistic': 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=85',
-  'fun-Fantasy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85',
-};
-
 const LOCAL_STORAGE_KEY = 'moiz_visual_lab_recent_creations';
 
 export const CreateStudio: React.FC<CreateStudioProps> = ({
-  initialMode = 'ai-photo',
+  initialMode = 'ai-image',
   initialPrompt = '',
   onNavigate,
 }) => {
@@ -90,10 +55,21 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
   const [currentResult, setCurrentResult] = useState<StudioCreationResult | null>(null);
   const [recentCreations, setRecentCreations] = useState<StudioCreationResult[]>(() => {
     try {
+      ['aitoolnest', 'ai_tool_nest', 'aitoolnest_recent_creations'].forEach((k) => localStorage.removeItem(k));
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.slice(0, 8);
+        if (Array.isArray(parsed)) {
+          // Strictly filter out legacy corrupted items where imageUrl was reused from uploaded source or old branding
+          return parsed.filter(
+            (c) =>
+              c &&
+              c.imageUrl &&
+              c.imageUrl !== c.originalImage &&
+              !c.imageUrl.includes('aitool') &&
+              !c.imageUrl.includes('nest')
+          ).slice(0, 8);
+        }
       }
     } catch {
       // ignore localStorage errors
@@ -109,7 +85,8 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
         if (cfg) setProviderConfig(cfg);
       })
       .catch(() => {
-        // Dev / offline fallback
+        // Offline / static hosting fallback
+        setProviderConfig({ hasApiKey: false, provider: 'none', aiConnected: false });
       });
   }, []);
 
@@ -140,16 +117,15 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
     }
   };
 
-  // Sync recent creations to localStorage safely (stripping ephemeral blob: URLs)
+  // Sync recent creations to localStorage safely
   useEffect(() => {
     try {
-      const persistent = recentCreations.map((c) => ({
-        ...c,
-        originalImage: c.originalImage && c.originalImage.startsWith('blob:') ? undefined : c.originalImage,
-        imageUrl: c.imageUrl.startsWith('blob:')
-          ? PREVIEW_VISUALS[`${c.mode}-${c.style}`] || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=85'
-          : c.imageUrl,
-      }));
+      const persistent = recentCreations
+        .filter((c) => !c.imageUrl.startsWith('blob:'))
+        .map((c) => ({
+          ...c,
+          originalImage: c.originalImage && c.originalImage.startsWith('blob:') ? undefined : c.originalImage,
+        }));
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(persistent.slice(0, 8)));
     } catch {
       // ignore localStorage errors
@@ -194,13 +170,15 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
 
   const disabledReason = !canGenerate
     ? selectedMode === 'ai-photo'
-      ? 'Upload a photo to use AI Photo transformation.'
+      ? prompt.trim()
+        ? 'Upload a photo to transform, or switch to AI Image mode to generate from your prompt alone.'
+        : 'Upload a photo to use AI Photo transformation.'
       : selectedMode === 'ai-image'
       ? 'Enter a description or idea to generate an AI Image.'
       : 'Upload a photo or write an idea to enable generation.'
     : undefined;
 
-  const handleGenerate = async (forceMockFallback: boolean = false) => {
+  const handleGenerate = async () => {
     if (!canGenerate || isGenerating) return;
 
     // Reset error state
@@ -249,18 +227,46 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
           prompt: prompt.trim(),
           style: selectedStyle,
           image: imagePayload,
-          allowMockFallback: forceMockFallback || (!providerConfig?.hasApiKey),
         }),
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
-      if (!response.ok || !data.success) {
-        // Do not pretend generation succeeded!
-        setGenerationError(data.error || 'Generation failed. Please try again.');
-        setGenerationErrorCode(data.code || (response.status === 429 ? 'QUOTA_EXCEEDED' : 'API_ERROR'));
+      if (!response.ok || !data?.success) {
+        const isNotConnected =
+          response.status === 503 ||
+          response.status === 404 ||
+          data?.code === 'AI_NOT_CONNECTED' ||
+          data?.code === 'NO_API_KEY';
+        const isQuota =
+          response.status === 429 ||
+          data?.code === 'QUOTA_EXCEEDED';
+
+        setGenerationError(
+          isNotConnected
+            ? 'AI generation is not connected yet. Please configure an AI image provider.'
+            : isQuota
+            ? 'AI generation quota exceeded. A billing-enabled Gemini API key is required for image generation.'
+            : data?.error || 'Generation failed. Please try again.'
+        );
+        setGenerationErrorCode(
+          isNotConnected
+            ? 'AI_NOT_CONNECTED'
+            : isQuota
+            ? 'QUOTA_EXCEEDED'
+            : data?.code || 'API_ERROR'
+        );
+        setIsGenerating(false);
+        return;
+      }
+
+      // CRITICAL SECURITY & LOGIC CHECK: Ensure the backend returned a new image,
+      // and NEVER accept an echo of the original uploaded image as the generated result.
+      if (!data.imageUrl || data.imageUrl === uploadedImage) {
+        setGenerationError('The backend did not produce a newly generated visual. Please try again with a descriptive prompt.');
+        setGenerationErrorCode('GENERATION_FAILED');
         setIsGenerating(false);
         return;
       }
@@ -274,7 +280,6 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
         originalImage: uploadedImage,
         createdAt: Date.now(),
         isVideo: selectedMode === 'ai-video',
-        isMock: Boolean(data.isMock),
       };
 
       setCurrentResult(newCreation);
@@ -291,8 +296,8 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
         setGenerationError('Generation was cancelled.');
         setGenerationErrorCode('CANCELLED');
       } else {
-        setGenerationError((err as Error)?.message || 'Could not connect to generation service. Please check your network and retry.');
-        setGenerationErrorCode('NETWORK_ERROR');
+        setGenerationError('AI generation is not connected yet. Please configure an AI image provider.');
+        setGenerationErrorCode('AI_NOT_CONNECTED');
       }
       setIsGenerating(false);
     } finally {
@@ -310,17 +315,13 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
     setGenerationErrorCode('CANCELLED');
   };
 
-  const handleFallbackToMock = () => {
-    handleGenerate(true);
-  };
-
   const handleDismissError = () => {
     setGenerationError(null);
     setGenerationErrorCode(null);
   };
 
   const handleCreateAgain = () => {
-    handleGenerate(false);
+    handleGenerate();
   };
 
   const handleTryAnotherStyle = () => {
@@ -351,9 +352,9 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
     }
   };
 
-  const providerNote = providerConfig?.hasApiKey
-    ? '✦ Powered by Google Gemini AI (gemini-3.1-flash-lite-image)'
-    : '✦ Prototype preview mode active. (Real generation not configured)';
+  const providerNote = providerConfig?.aiConnected
+    ? '✦ Connected to live AI generation backend.'
+    : '✦ AI generation is not connected yet. A configured backend with quota is required.';
 
   return (
     <div className="py-8 sm:py-12 bg-white min-h-[85vh]">
@@ -378,14 +379,14 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
               <Layers className="w-3.5 h-3.5" />
               <span>Create Studio</span>
             </div>
-            {providerConfig?.hasApiKey ? (
+            {providerConfig?.aiConnected ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live AI Connected
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-semibold border border-amber-200">
-                Prototype Mode
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold border border-slate-200">
+                AI Not Connected
               </span>
             )}
           </div>
@@ -438,7 +439,8 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
             <GenerateButton
               canGenerate={canGenerate}
               isGenerating={isGenerating}
-              onGenerate={() => handleGenerate(false)}
+              aiConnected={providerConfig?.aiConnected ?? false}
+              onGenerate={handleGenerate}
               onCancel={handleCancelGenerating}
               disabledReason={disabledReason}
               providerNote={providerNote}
@@ -456,9 +458,8 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({
               isGenerating={isGenerating}
               error={generationError}
               errorCode={generationErrorCode}
-              onRetry={() => handleGenerate(false)}
+              onRetry={handleGenerate}
               onDismissError={handleDismissError}
-              onFallbackToMock={handleFallbackToMock}
               onCancelGenerating={handleCancelGenerating}
               onCreateAgain={handleCreateAgain}
               onTryAnotherStyle={handleTryAnotherStyle}

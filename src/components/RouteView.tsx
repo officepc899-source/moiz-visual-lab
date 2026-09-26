@@ -17,7 +17,7 @@ interface RouteViewProps {
 export const RouteView: React.FC<RouteViewProps> = ({ route, onNavigate }) => {
   // Dedicated Create Studio Workspace
   if (route === '/create') {
-    return <CreateStudio initialMode="ai-photo" onNavigate={onNavigate} />;
+    return <CreateStudio initialMode="ai-image" onNavigate={onNavigate} />;
   }
 
   if (route === '/ai-photo') {

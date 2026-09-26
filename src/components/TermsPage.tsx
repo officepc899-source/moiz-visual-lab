@@ -152,18 +152,18 @@ export const TermsPage: React.FC = () => {
           </div>
         </section>
 
-        {/* Section 6: Service Availability & Prototype Features */}
+        {/* Section 6: Service Availability & AI Features */}
         <section className="space-y-3">
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-mono">6</span>
-            <span>Service Availability & Prototype Notice</span>
+            <span>Service Availability & AI Features Notice</span>
           </h2>
           <div className="text-sm leading-relaxed text-slate-600 space-y-2 pl-8">
             <p>
               We strive for high uptime and smooth performance, but the platform is provided on an &quot;as is&quot; and &quot;as available&quot; basis. Features may be updated, modified, or temporarily paused for maintenance, model upgrades, or cloud provider quota adjustments.
             </p>
             <p>
-              <strong>Prototype Features Notice:</strong> Certain modalities—including AI Video motion loops and experimental style concepts—are explicitly offered in prototype preview mode. Such features showcase interface mechanics and interactive prototypes and should not be relied upon for mission-critical production rendering.
+              <strong>AI Services Notice:</strong> Generative image synthesis requires an active connection to supported AI provider APIs. When an AI provider key is not connected or quotas are unavailable, the application clearly indicates that AI generation is not connected yet.
             </p>
           </div>
         </section>

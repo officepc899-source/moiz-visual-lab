@@ -132,13 +132,13 @@ export const UploadDropzone: React.FC<UploadDropzoneProps> = ({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-xs sm:text-sm">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Photo ready for transformation</span>
+                <span>Source reference photo loaded</span>
               </div>
               <p className="text-xs text-slate-700 truncate font-medium mt-0.5">
                 {uploadedFileName || 'Selected photo reference'}
               </p>
               <p className="text-[11px] text-slate-500 mt-1">
-                JPG / PNG / WEBP source loaded
+                Used as source reference for transformation
               </p>
             </div>
             <button
